@@ -1,4 +1,5 @@
 import numpy as np
+import commpy
 
 
 class Interaction:
@@ -61,6 +62,7 @@ Nt = 4*4
 
 d = 0.5 #distance between antenna elements in function of lambda
 frequency = 60e6 #Operating frequency
+bandwidth = 1760e6
 c = 3e8 # light speed in m/s
 Lambda = c/frequency #wavelength
 
@@ -108,7 +110,8 @@ for l in lines:
         if counterPaths >= 0 and counterPaths < points[counterPoints].nPaths and not pointData:
             if len(l) == 8:
                 #print(counterPoints, counterPaths)
-                points[counterPoints].setPath(counterPaths, int(l[1]), float(l[2]), float(l[3]), float(l[4]), float(l[5]), float(l[6]), float(l[7]))
+                points[counterPoints].setPath(counterPaths, int(l[1]), float(l[2]), float(l[3]), 
+                        np.radians(float(l[4])), np.radians(float(l[5])), np.radians(float(l[6])), np.radians(float(l[7])))
                 #points[counterPoints].paths[counterPaths].Print()
                 continue
 
@@ -136,31 +139,52 @@ for l in lines:
 
 
 H = []
+Hl = []
 k = 2*np.pi/Lambda
+rolloff = 0.1
+symbolPeriod = 1/bandwidth
+sampleF = 2*(frequency+bandwidth)
+samples = 10000
+rcosTime, rcosResponse = commpy.filters.rcosfilter(samples, rolloff, symbolPeriod, sampleF)
+
+dimensionAntennaElements = np.sqrt(Nt) #we assume that Nt=Nr and that Nx = Ny for both, tx and rx
 
 for p in points:
+    counter = 0
     ########################### Steering Vectors ###################################
-    txSteeringVector = [[1],[1]]
-    rxSteeringVector = [[1],[1]]
-    pathgain = t.
+    temp = 0
     for t in p.paths:
+        txSteeringVector = [[],[]]
+        rxSteeringVector = [[],[]]
         #t.Print()
-        omegaY = k*dy*np.sin(t.departureTheta)*np.sin(t.departurePhi)
-        omegaX = k*dx*np.sin(t.departureTheta)*np.cos(t.departurePhi)
-        txSteeringVector[0].append(np.exp(1j*omegaY))
-        txSteeringVector[1].append(np.exp(1j*omegaX))
+        for n in range(int(dimensionAntennaElements)): 
+            omegaY = k*dy*np.sin(t.departureTheta)*np.sin(t.departurePhi)
+            omegaX = k*dx*np.sin(t.departureTheta)*np.cos(t.departurePhi)
+            txSteeringVector[0].append(np.exp(1j*n*omegaY))
+            txSteeringVector[1].append(np.exp(1j*n*omegaX))
 
-        omegaY = k*dy*np.sin(t.arrivalTheta)*np.sin(t.arrivalPhi)
-        omegaX = k*dx*np.sin(t.arrivalTheta)*np.cos(t.arrivalPhi)
-        rxSteeringVector[0].append(np.exp(1j*omegaY))
-        rxSteeringVector[1].append(np.exp(1j*omegaX))
-    #Finishes the calculum of the steering vectors multplying by the antenna factor (scalar)
-    #and does the kronecker product between theta and phi components
-    txSteeringVector = (1/np.sqrt(Nt))*np.kron(txSteeringVector[0],txSteeringVector[1])
-    rxSteeringVector = (1/np.sqrt(Nr))*np.kron(rxSteeringVector[0],rxSteeringVector[1])
+            omegaY = k*dy*np.sin(t.arrivalTheta)*np.sin(t.arrivalPhi)
+            omegaX = k*dx*np.sin(t.arrivalTheta)*np.cos(t.arrivalPhi)
+            rxSteeringVector[0].append(np.exp(1j*n*omegaY))
+            rxSteeringVector[1].append(np.exp(1j*n*omegaX))
 
-    #Multiplies the steering vectors among themselves, but the tx steering vectors suffers an
-    #hermitian transformation or the conjugate transpose
-    H.append(np.dot(rxSteeringVector, txSteeringVector.conj().T))
+        #Finishes the calculum of the steering vectors multplying by the antenna factor (scalar)
+        #and does the kronecker product between theta and phi components
+        txSteeringVector = (1/np.sqrt(Nt))*np.kron(txSteeringVector[0],txSteeringVector[1])
+        rxSteeringVector = (1/np.sqrt(Nr))*np.kron(rxSteeringVector[0],rxSteeringVector[1])
+
+        #Multiplies the steering vectors among themselves, but the tx steering vectors suffers an
+        #hermitian transformation or the conjugate transpose
+        Hl.append(np.sqrt(Nt*Nr)*t.receivedPower*np.dot(rxSteeringVector, txSteeringVector.conj().T))
+        
+        # result: array with the results with time near the nT - tl
+        # choice: one of elements in result is choosen randomly
+        # gfilter: impulse response function of raised cosine filter in the time chosen by choice and result
+        result = np.where(np.isclose(rcosTime, counter*symbolPeriod - t.timeOfArrival))
+        choice = np.random.choice(result[0])
+        gfilter = rcosResponse[choice]
+        temp += gfilter*t.receivedPower*np.dot(rxSteeringVector, txSteeringVector.conj().T) 
+
+    H.append(temp)
+    counter += 1
     print(H[-1])
-
