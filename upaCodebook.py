@@ -1,5 +1,24 @@
 import numpy as np
 
+def fftmtx(N, option=1):
+    W = np.exp(-1j*2*np.pi/N)
+    Ah = [[W**(i*j) for j in range(N)] for i in range(N)]
+    A = []
+    if option == 1:
+        Ah /= np.sqrt(N)
+        A = np.conj(Ah)
+    elif option == 2:
+        A = np.conj(Ah)
+        Ah /= N
+    elif option == 3:
+        A = np.conj(Ah)
+    else:
+        print('Invalid option value: %d' % option)
+        return 0
+
+    return [Ah, A]
+
+
 frequency = 60e9
 c = 3e8
 
