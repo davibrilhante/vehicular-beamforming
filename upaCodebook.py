@@ -2,6 +2,8 @@ import numpy as np
 
 def fftmtx(N, option=1):
     # Implemented by Aldebaro Klautau
+    # Also Available at:
+    # https://github.com/aldebaro/dsp-telecom-book-code/blob/master/MatlabOctaveFunctions/ak_fftmtx.m
     # function [Ah, A] = ak_fftmtx(N, option)
     # FFT 'DIRECT Ah' and 'INVERSE A' matrices with 3 options for
     # the normalization factors:
@@ -37,7 +39,8 @@ Lambda = c/frequency
 
 nElementsX = 4
 nElementsY = 4
-elementsDist = 0.5 * Lambda
+normDist = 0.5
+elementsDist = normDist * Lambda
 
 numRandomVectorsX = int(nElementsX/2)
 numRandomVectorsY = int(nElementsY/2)
@@ -84,21 +87,52 @@ for i in range(numDFTPairVectorsY):
         dftPairsY[j][i] = dftMatrixY[0][j][randNum1] + dftMatrixY[0][j][randNum2]
 
 ##################################### STEERED Vectors ###########################################
+# Simply steer along the y direction with elevation of 90 degrees
 minAzimuth = np.radians(70)
 maxAzimuth = np.radians(110)
+elevationPoint = np.pi/2
 
+steeredX = [[0 for i in range(numSteeredVectorsX)] for j in range(nElementsX)]
+azimuths = np.linspace(minAzimuth,maxAzimuth,numSteeredVectorsX)
 
-#Populates Wx and Wy with the random matrix, DFT Pairs
+for i in range(numSteeredVectorsX):
+    for j in range(nElementsX):
+        beta = -2*np.pi*normDist*np.sin(elevationPoint)*np.cos(azimuths[i])
+        steeredX[j][i] = np.exp(1j*j*beta)
+
+steeredY = [[0 for i in range(numSteeredVectorsY)] for j in range(nElementsY)]
+azimuths = np.linspace(minAzimuth,maxAzimuth,numSteeredVectorsY)
+for i in range(numSteeredVectorsY):
+    for j in range(nElementsY):
+        beta = -2*np.pi*normDist*np.sin(elevationPoint)*np.cos(azimuths[i])
+        steeredY[j][i] = np.exp(1j*j*beta)
+
+#Populates Wx and Wy with the random matrix, DFT Pairs and steered vector
 for i in range(nElementsX):
+    counter = 0
     for j in range(numRandomVectorsX):
         Wx[i][nElementsX+j] = randomX[i][j]
+    counter+=j
 
     for j in range(numDFTPairVectorsX):
-        Wx[i][nElementsX+numRandomVectorsX+j] = dftPairsX[i][j]
+        Wx[i][nElementsX+counter+j] = dftPairsX[i][j]
+    counter+=j
+
+    for j in range(numSteeredVectorsX):
+        Wx[i][nElementsX+counter+j] = steeredX[i][j]
+
 
 for i in range(nElementsY):
+    counter = 0
     for j in range(numRandomVectorsY):
         Wy[i][nElementsY+j] = randomY[i][j]
-    for j in range(numDFTPairVectorsY):
-        Wy[i][nElementsY+numRandomVectorsY+j] = dftPairsY[i][j]
+    counter+=j
 
+    for j in range(numDFTPairVectorsY):
+        Wy[i][nElementsY+counter+j] = dftPairsY[i][j]
+    counter+=j
+
+    for j in range(numSteeredVectorsY):
+        Wy[i][nElementsY+counter+j] = steeredY[i][j]
+
+print(Wx)
