@@ -1,5 +1,6 @@
 import numpy as np
 from matplotlib import pyplot as plt
+from matplotlib.animation import FuncAnimation
 
 def fftmtx(N, option=1):
     # Implemented by Aldebaro Klautau
@@ -16,7 +17,12 @@ def fftmtx(N, option=1):
 
     W = np.exp(-1j*2*np.pi/N)#Twiddle factor W_N
     #Create the matrix with twiddle factors
-    Ah = [[W**(i*j) for j in range(N)] for i in range(N)]
+    Ah = []
+    for i in range(N):
+        Ah.append([])
+        for j in range(N):
+            Ah[-1].append(0)
+            Ah[i][j]= W**(i*j) 
     A = []
     if option == 1:#Orthonormal or unitary
         Ah /= np.sqrt(N)
@@ -25,7 +31,7 @@ def fftmtx(N, option=1):
         A = np.conj(Ah)
         Ah /= N
     elif option == 3: #As in matlab/octave Ah = Ah
-        A = np.conj(Ah)
+        A = np.conj(Ah)/N
     else:
         print('Invalid option value: %d' % option)
         return 0
@@ -59,6 +65,7 @@ Wx = [[0 for j in range(numVectorsX)] for i in range(nElementsX)]
 Wy = [[0 for j in range(numVectorsY)] for i in range(nElementsY)]
 
 dftMatrixX = fftmtx(nElementsX, 3)
+#print(dftMatrixX)
 dftMatrixY = fftmtx(nElementsY, 3)
 
 ####################################### Random Vectors #########################################
@@ -111,13 +118,16 @@ for i in range(numSteeredVectorsY):
 #Populates Wx and Wy with the random matrix, DFT Pairs and steered vector
 for i in range(nElementsX):
     counter = 0
+    for j in range(nElementsX):
+        Wx[i][j] = dftMatrixX[0][i][j]
+
     for j in range(numRandomVectorsX):
         Wx[i][nElementsX+j] = randomX[i][j]
-    counter+=j
+    counter+=numRandomVectorsX
 
     for j in range(numDFTPairVectorsX):
         Wx[i][nElementsX+counter+j] = dftPairsX[i][j]
-    counter+=j
+    counter+=numDFTPairVectorsX
 
     for j in range(numSteeredVectorsX):
         Wx[i][nElementsX+counter+j] = steeredX[i][j]
@@ -125,16 +135,24 @@ for i in range(nElementsX):
 
 for i in range(nElementsY):
     counter = 0
+    for j in range(nElementsY):
+        Wy[i][j] = dftMatrixY[0][i][j]
+
     for j in range(numRandomVectorsY):
         Wy[i][nElementsY+j] = randomY[i][j]
-    counter+=j
+    counter+=numRandomVectorsY
 
     for j in range(numDFTPairVectorsY):
         Wy[i][nElementsY+counter+j] = dftPairsY[i][j]
-    counter+=j
+    counter+=numDFTPairVectorsY
 
     for j in range(numSteeredVectorsY):
         Wy[i][nElementsY+counter+j] = steeredY[i][j]
+
+
+### Normalization
+Wx = np.divide(Wx, np.sqrt(sum(np.absolute(np.power(Wx,2)))))
+Wy = np.divide(Wy, np.sqrt(sum(np.absolute(np.power(Wy,2)))))
 
 #print(Wx)
 
@@ -204,5 +222,24 @@ for i in range(nElementsX*nElementsY):
 print(W)
 
 
-plt.plot(W[0][17])
+
+##################################### Array Factor Plot #########################################
+angles = np.angle(W[0][17])
+modulus = np.real(W[0][17])/np.cos(angles)
+arrayFactor = []
+im = []
+#for i in range()
+for p in range(-90,270):
+    phi = np.radians(p)
+    temp = 0
+    counter = 0
+    for n in range(nElementsY):
+        for m in range(nElementsX):
+            temp += modulus[counter]*np.exp(1j*m*angles[counter])*np.exp(1j*n*angles[counter])*np.exp(1j*2*np.pi*normDist*(m*np.cos(phi) + n*np.sin(phi)))
+            counter += 1
+    arrayFactor.append(temp)
+
+
+plt.polar(np.radians(range(-90, 270)), arrayFactor)
+#plt.plot(arrayFactor)
 plt.show()
