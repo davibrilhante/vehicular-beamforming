@@ -1,4 +1,5 @@
 import numpy as np
+from matplotlib import pyplot as plt
 
 def fftmtx(N, option=1):
     # Implemented by Aldebaro Klautau
@@ -135,4 +136,73 @@ for i in range(nElementsY):
     for j in range(numSteeredVectorsY):
         Wy[i][nElementsY+counter+j] = steeredY[i][j]
 
-print(Wx)
+#print(Wx)
+
+
+##################################### Codebook Creation #########################################
+numCodebookIndices = nElementsX*nElementsY + numRandomVectorsX*numRandomVectorsY +\
+        nElementsX*numDFTPairVectorsY + nElementsY*numDFTPairVectorsX +\
+        numSteeredVectorsX*numSteeredVectorsY
+
+codebook = [[0,0] for i in range(numCodebookIndices)]
+numElement = 0
+
+for i in range(nElementsX):
+    for j in range(nElementsY):
+        codebook[numElement][0] = i
+        codebook[numElement][1] = j
+        numElement += 1
+
+
+#Random Combinations
+
+for i in range(numRandomVectorsX):
+    for j in range(numRandomVectorsY):
+        codebook[numElement][0] = nElementsX + 1
+        codebook[numElement][1] = nElementsY + 2
+        numElement += 1
+
+#Combine single and double DFT for x and y
+
+for i in range(nElementsX):
+    for j in range(numDFTPairVectorsY):
+        codebook[numElement][0] = i
+        codebook[numElement][1] = nElementsY + numRandomVectorsY + j
+        numElement += 1
+
+
+for i in range(nElementsY):
+    for j in range(numDFTPairVectorsX):
+        codebook[numElement][0] = i
+        codebook[numElement][1] = nElementsX + numRandomVectorsX + j
+        numElement += 1
+
+#Steering Vectors
+for i in range(numSteeredVectorsX):
+    for j in range(numSteeredVectorsY):
+        codebook[numElement][0] = nElementsX+numRandomVectorsX+numDFTPairVectorsX+i
+        codebook[numElement][1] = nElementsY+numRandomVectorsY+numDFTPairVectorsY+j
+        numElement += 1
+
+
+
+#Use the Kronecker to represent the matrix for a pair of wx and wy as a single array
+#See  John Brady, Akbar Sayeed, Millimeter-Wave MIMO Transceivers - Chap 10
+#Section 10.5
+#http://dune.ece.wisc.edu/publications/ -> 2015
+
+numCodewords = len(codebook)
+W = [[0 for i in range(numCodewords)] for j in range(nElementsX*nElementsY)]
+
+
+for i in range(nElementsX*nElementsY):
+    for j in range(numCodewords):
+        tempX = [Wx[k][codebook[j][0]] for k in range(nElementsX)]
+        tempY = [Wy[k][codebook[j][1]] for k in range(nElementsY)]
+        W[i][j] = np.kron(tempY, tempX)
+
+print(W)
+
+
+plt.plot(W[0][17])
+plt.show()
