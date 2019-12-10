@@ -1,5 +1,6 @@
 import numpy as np
 import commpy
+from upaCodebook import upaCodebookCreator
 
 
 class Interaction:
@@ -57,8 +58,8 @@ class Point:
 
 
 
-Nr = 4*4 #4X4 antenna array
-Nt = 4*4
+Nr = [4,4] #4X4 antenna array
+Nt = [4,4]
 
 d = 0.5 #distance between antenna elements in function of lambda
 frequency = 60e6 #Operating frequency
@@ -157,25 +158,28 @@ for p in points:
         txSteeringVector = [[],[]]
         rxSteeringVector = [[],[]]
         #t.Print()
-        for n in range(int(dimensionAntennaElements)): 
+        for n in range(Nt[0]): 
             omegaY = k*dy*np.sin(t.departureTheta)*np.sin(t.departurePhi)
-            omegaX = k*dx*np.sin(t.departureTheta)*np.cos(t.departurePhi)
             txSteeringVector[0].append(np.exp(1j*n*omegaY))
+        for n in range(Nt[1]): 
+            omegaX = k*dx*np.sin(t.departureTheta)*np.cos(t.departurePhi)
             txSteeringVector[1].append(np.exp(1j*n*omegaX))
 
+        for n in range(Nr[0]): 
             omegaY = k*dy*np.sin(t.arrivalTheta)*np.sin(t.arrivalPhi)
-            omegaX = k*dx*np.sin(t.arrivalTheta)*np.cos(t.arrivalPhi)
             rxSteeringVector[0].append(np.exp(1j*n*omegaY))
+        for n in range(Nr[1]): 
+            omegaX = k*dx*np.sin(t.arrivalTheta)*np.cos(t.arrivalPhi)
             rxSteeringVector[1].append(np.exp(1j*n*omegaX))
 
         #Finishes the calculum of the steering vectors multplying by the antenna factor (scalar)
         #and does the kronecker product between theta and phi components
-        txSteeringVector = (1/np.sqrt(Nt))*np.kron(txSteeringVector[0],txSteeringVector[1])
-        rxSteeringVector = (1/np.sqrt(Nr))*np.kron(rxSteeringVector[0],rxSteeringVector[1])
+        txSteeringVector = (1/np.sqrt(Nt[0]*Nt[1]))*np.kron(txSteeringVector[0],txSteeringVector[1])
+        rxSteeringVector = (1/np.sqrt(Nr[0]*Nr[1]))*np.kron(rxSteeringVector[0],rxSteeringVector[1])
 
         #Multiplies the steering vectors among themselves, but the tx steering vectors suffers an
         #hermitian transformation or the conjugate transpose
-        Hl.append(np.sqrt(Nt*Nr)*t.receivedPower*np.dot(rxSteeringVector, txSteeringVector.conj().T))
+        Hl.append(np.sqrt(Nt[0]*Nt[1]*Nr[0]*Nr[1])*t.receivedPower*np.dot(rxSteeringVector, txSteeringVector.conj().T))
         
         # result: array with the results with time near the nT - tl
         # choice: one of elements in result is choosen randomly
@@ -183,8 +187,33 @@ for p in points:
         result = np.where(np.isclose(rcosTime, counter*symbolPeriod - t.timeOfArrival))
         choice = np.random.choice(result[0])
         gfilter = rcosResponse[choice]
+        # As the gain is not available in a complex form, only real, the phase is randomly picked
+        randomTheta = np.radians(np.random.uniform(0,360))
+        complexGain = t.receivedPower*(np.cos(randomTheta) + 1j*np.sin(randomTheta))
         temp += gfilter*t.receivedPower*np.dot(rxSteeringVector, txSteeringVector.conj().T) 
 
     H.append(temp)
     counter += 1
-    print(H[-1])
+    #print(H[-1])
+
+
+#CODEBOOKS + CHANNEL
+Wt = upaCodebookCreator(frequency, Nt[0], Nt[1], d)
+Wr = upaCodebookCreator(frequency, Nr[0], Nr[1], d)
+
+for h in H:
+    powers = []
+    for w in Wt[0]:
+        for f in Wr[0]:
+            wct = h*np.conjugate(w)
+            powers.append(np.dot(wct, f))
+    maxGain = np.max(powers)
+    maxPair = np.argmax(powers)
+    maxTxCodebook = int(maxPair/len(Wr[0]))
+    maxRxCodebook = maxPair % len(Wr[0])
+    print(maxGain, maxPair, maxTxCodebook, maxRxCodebook) 
+
+            
+### TO DO: Fix a seed
+### TO DO: calculate antenna gain to each channel and SNR
+### TO DO: develop and call fully random codebook and compare! 
