@@ -228,6 +228,16 @@ def upaCodebookCreator(frequency = 60e9, nElementsX=4, nElementsY=4, normDist=0.
 
     return W
 
+def upaCodebookFullyRandom(frequency=60e9, nElementsX=4, nElementsY=4, normDist=0.5, bookLength=64):
+    W = []
+    for i in range(bookLength):
+        randomX = np.random.normal(size=(nElementsX,nElementsX))+\
+                        1j*np.random.normal(size=(nElementsX,nElementsX))
+        randomY = np.random.normal(size=(nElementsY,nElementsY))+\
+                        1j*np.random.normal(size=(nElementsY,nElementsY))
+        W.append(np.dot(randomX, randomY).reshape(-1))
+    return [W]
+
 def plotBeamPattern(W, nElementsX=4, nElementsY=4, normDist=0.5):
     '''
         Plots the beam pattern based on arrat factor as given in [REF]
@@ -262,5 +272,8 @@ if __name__ =='__main__':
         plotBeamPattern(W, int(argv[2]), int(argv[3]), float(argv[4]))
     elif len(argv) <= 1:
         W = upaCodebookCreator()
+        plotBeamPattern(W)
+        W = upaCodebookFullyRandom()
+        #print(W[0][0])
         plotBeamPattern(W)
 
