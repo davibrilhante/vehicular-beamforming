@@ -235,6 +235,8 @@ def upaCodebookFullyRandom(frequency=60e9, nElementsX=4, nElementsY=4, normDist=
                         1j*np.random.normal(size=(nElementsX,nElementsX))
         randomY = np.random.normal(size=(nElementsY,nElementsY))+\
                         1j*np.random.normal(size=(nElementsY,nElementsY))
+        randomX = np.divide(randomX, np.sqrt(sum(np.absolute(np.power(randomX,2)))))
+        randomY = np.divide(randomY, np.sqrt(sum(np.absolute(np.power(randomY,2)))))
         W.append(np.dot(randomX, randomY).reshape(-1))
     return [W]
 
