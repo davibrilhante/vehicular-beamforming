@@ -1,6 +1,9 @@
 import numpy as np
 import commpy
-from upaCodebook import upaCodebookCreator
+from upaCodebook import upaCodebookCreator, upaCodebookFullyRandom
+
+np.random.seed(1)
+
 
 
 class Interaction:
@@ -196,24 +199,34 @@ for p in points:
     counter += 1
     #print(H[-1])
 
-
+#Two different codebooks with tx and rx each
+codebooks = [[[],[]],[[],[]]]
+bestCodewords = [[[],[]],[[],[]]]
+p = [[],[]]
+for method in range(2):
 #CODEBOOKS + CHANNEL
-Wt = upaCodebookCreator(frequency, Nt[0], Nt[1], d)
-Wr = upaCodebookCreator(frequency, Nr[0], Nr[1], d)
+    if method == 0:
+        codebooks[method][0] = upaCodebookCreator(frequency, Nt[0], Nt[1], d)
+        codebooks[method][1] = upaCodebookCreator(frequency, Nr[0], Nr[1], d)
+    elif method == 1:
+        codebooks[method][0] = upaCodebookFullyRandom(frequency, Nt[0], Nt[1], d)
+        codebooks[method][1] = upaCodebookFullyRandom(frequency, Nr[0], Nr[1], d)
 
-for h in H:
-    powers = []
-    for w in Wt[0]:
-        for f in Wr[0]:
-            wct = h*np.conjugate(w)
-            powers.append(np.dot(wct, f))
-    maxGain = np.max(powers)
-    maxPair = np.argmax(powers)
-    maxTxCodebook = int(maxPair/len(Wr[0]))
-    maxRxCodebook = maxPair % len(Wr[0])
-    print(maxGain, maxPair, maxTxCodebook, maxRxCodebook) 
+    for h in H:
+        powers = []
+        for w in codebooks[method][0][0]:
+            for f in codebooks[method][1][0]:
+                wct = h*np.conjugate(w)
+                powers.append(np.dot(wct, f))
+        maxGain = np.max(powers)
+        p[method].append(maxGain)
+        maxPair = np.argmax(powers)
+        maxTxCodebook = int(maxPair/len(codebooks[method][1][0]))
+        maxRxCodebook = maxPair % len(codebooks[method][1][0])
+        bestCodewords[method][0].append(maxTxCodebook)
+        bestCodewords[method][1].append(maxRxCodebook)
 
-            
-### TO DO: Fix a seed
-### TO DO: calculate antenna gain to each channel and SNR
-### TO DO: develop and call fully random codebook and compare! 
+print(bestCodewords)            
+angles = np.angle(p)
+gains = np.real(p/np.cos(angles)) 
+print(gains)
