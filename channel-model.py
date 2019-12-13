@@ -1,6 +1,7 @@
 import numpy as np
 import commpy
 from upaCodebook import upaCodebookCreator, upaCodebookFullyRandom
+from matplotlib import pyplot as plt
 
 np.random.seed(1)
 
@@ -58,7 +59,11 @@ class Point:
     def Print(self):
         print('[nPaths: %d, avgReceivedPower: %f, avgTimeOfArrival: %f, delaySpread: %f]' % (self.nPaths, self.avgReceivedPower, self.avgTimeOfArrival, self.delaySpread))
 
-
+def raisedCosine(t, period, samplerate, rolloff):
+    if abs(t) == period/(2*rolloff):
+        return (np.pi/4*period)*np.sinic(1/(2*rolloff))
+    else:
+        return (1/period)*np.sinc(1/period)*(np.cos(np.pi*rolloff*t/period)/(1-(2*rolloff*t/period)**2))
 
 
 Nr = [4,4] #4X4 antenna array
@@ -73,6 +78,9 @@ Lambda = c/frequency #wavelength
 dx = Lambda*d #explicit distance between antenna elements in x
 dy = Lambda*d
 
+finalAK = []
+finalRand = []
+theorical = []
 
 ########################### Load Raw Data ######################################
 filename = "model.paths.t001_01.r002.p2m"
@@ -188,12 +196,15 @@ for p in points:
         # choice: one of elements in result is choosen randomly
         # gfilter: impulse response function of raised cosine filter in the time chosen by choice and result
         result = np.where(np.isclose(rcosTime, counter*symbolPeriod - t.timeOfArrival))
-        choice = np.random.choice(result[0])
-        gfilter = rcosResponse[choice]
+        if len(result) > 1:
+            choice = np.random.choice(result[0])
+            gfilter = rcosResponse[choice]
+        else:
+            gfilter = raisedCosine(counter*symbolPeriod - t.timeOfArrival, symbolPeriod, sampleF, rolloff) #rcosResponse[choice]
         # As the gain is not available in a complex form, only real, the phase is randomly picked
         randomTheta = np.radians(np.random.uniform(0,360))
         complexGain = t.receivedPower*(np.cos(randomTheta) + 1j*np.sin(randomTheta))
-        temp += gfilter*t.receivedPower*np.dot(rxSteeringVector, txSteeringVector.conj().T) 
+        temp += gfilter*complexGain*np.dot(rxSteeringVector, txSteeringVector.conj().T) 
 
     H.append(temp)
     counter += 1
@@ -226,7 +237,18 @@ for method in range(2):
         bestCodewords[method][0].append(maxTxCodebook)
         bestCodewords[method][1].append(maxRxCodebook)
 
-print(bestCodewords)            
 angles = np.angle(p)
 gains = np.real(p/np.cos(angles)) 
-print(gains)
+if len(gains[0]) == 10:
+    finalAK.append(gains[0])
+    finalRand.append(gains[1])
+    theorical.append(H) 
+
+#theorical = np.multiply(np.sqrt(Nt[0]*Nt[1]*Nr[0]*Nr[1]),np.absolute(theorical))
+theorical = np.absolute(theorical)
+#print(len(finalAK), len(np.mean(finalAK, axis=0)))
+plt.plot(np.mean(finalAK,axis=0), label='AK')
+plt.plot(np.mean(finalRand,axis=0), label='Random')
+plt.plot(np.mean(theorical,axis=0), label='Channel')
+plt.legend()
+plt.show()
