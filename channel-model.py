@@ -1,6 +1,7 @@
 import numpy as np
 import commpy
 from upaCodebook import upaCodebookCreator, upaCodebookFullyRandom
+from matplotlib import pyplot as plt
 
 np.random.seed(1)
 
@@ -58,7 +59,11 @@ class Point:
     def Print(self):
         print('[nPaths: %d, avgReceivedPower: %f, avgTimeOfArrival: %f, delaySpread: %f]' % (self.nPaths, self.avgReceivedPower, self.avgTimeOfArrival, self.delaySpread))
 
-
+def raisedCosine(t, period, samplerate, rolloff):
+    if abs(t) == period/(2*rolloff):
+        return (np.pi/4*period)*np.sinic(1/(2*rolloff))
+    else:
+        return (1/period)*np.sinc(1/period)*(np.cos(np.pi*rolloff*t/period)/(1-(2*rolloff*t/period)**2))
 
 
 Nr = [4,4] #4X4 antenna array
@@ -73,160 +78,180 @@ Lambda = c/frequency #wavelength
 dx = Lambda*d #explicit distance between antenna elements in x
 dy = Lambda*d
 
+repos = '../pc128/example_working/restuls/run'
+nRuns = 2378
+finalAK = []
+finalRand = []
+theorical = []
+for run in range(nRuns):
+    print(run)
+    ########################### Load Raw Data ######################################
+    filename = "model.paths.t001_01.r002.p2m"
+    f = open(repos+'{:05d}'.format(run)+'/study/'+filename)
+    lines = f.readlines()
+    counterPoints = -1
+    counterPaths = 0
+    counterInteractions = 0
+    pointData = True
+    points = []
+    types=[]
 
-########################### Load Raw Data ######################################
-filename = "model.paths.t001_01.r002.p2m"
-f = open(filename)
-lines = f.readlines()
-counterPoints = -1
-counterPaths = 0
-counterInteractions = 0
-pointData = True
-points = []
-types=[]
-
-for l in lines:
-    l = l.strip().split()
-    if l[0] == '#': #skip the format of the file
-        continue
-    else:
-        if counterPoints == -1: #search for the number of points
-            nPoints = int(l[0])
-            for i in range(nPoints):
-                points.append(Point())
-            counterPoints = 0
+    for l in lines:
+        l = l.strip().split()
+        if l[0] == '#': #skip the format of the file
             continue
-
-        if len(l) == 2: #search for the point index and the number of its paths
-            points[int(l[0])-1] = Point(int(l[1]))
-            pointData = True
-            counterPaths = 0
-            continue
-
-        if pointData:
-            points[counterPoints].avgReceivedPower = float(l[0])
-            points[counterPoints].avgTimeOfArrival = float(l[1])
-            points[counterPoints].delaySpread = float(l[2])
-            #points[counterPoints].Print()
-            pointData = False
-            continue
-
-        if counterPaths >= 0 and counterPaths < points[counterPoints].nPaths and not pointData:
-            if len(l) == 8:
-                #print(counterPoints, counterPaths)
-                points[counterPoints].setPath(counterPaths, int(l[1]), float(l[2]), float(l[3]), 
-                        np.radians(float(l[4])), np.radians(float(l[5])), np.radians(float(l[6])), np.radians(float(l[7])))
-                #points[counterPoints].paths[counterPaths].Print()
+        else:
+            if counterPoints == -1: #search for the number of points
+                nPoints = int(l[0])
+                for i in range(nPoints):
+                    points.append(Point())
+                counterPoints = 0
                 continue
 
-            if len(l)==1:
-                types = l[0].split('-')
-                counterInteractions = 0
+            if len(l) == 2: #search for the point index and the number of its paths
+                points[int(l[0])-1] = Point(int(l[1]))
+                pointData = True
+                counterPaths = 0
                 continue
 
-            else:
-                if counterInteractions >=1 and counterInteractions < len(types)-1:
-                    points[counterPoints].paths[counterPaths].setInteraction(counterInteractions-1, types[counterInteractions], float(l[0]),float(l[1]),float(l[2]))
-                    #points[counterPoints].paths[counterPaths].interactions[counterInteractions-1].Print()
-                    counterInteractions += 1
+            if pointData:
+                points[counterPoints].avgReceivedPower = float(l[0])
+                points[counterPoints].avgTimeOfArrival = float(l[1])
+                points[counterPoints].delaySpread = float(l[2])
+                #points[counterPoints].Print()
+                pointData = False
+                continue
+
+            if counterPaths >= 0 and counterPaths < points[counterPoints].nPaths and not pointData:
+                if len(l) == 8:
+                    #print(counterPoints, counterPaths)
+                    points[counterPoints].setPath(counterPaths, int(l[1]), float(l[2]), float(l[3]), 
+                            np.radians(float(l[4])), np.radians(float(l[5])), np.radians(float(l[6])), np.radians(float(l[7])))
+                    #points[counterPoints].paths[counterPaths].Print()
                     continue
+
+                if len(l)==1:
+                    types = l[0].split('-')
+                    counterInteractions = 0
+                    continue
+
                 else:
-                    if types[counterInteractions] == 'Rx':
-                        pass
-                    else:
+                    if counterInteractions >=1 and counterInteractions < len(types)-1:
+                        points[counterPoints].paths[counterPaths].setInteraction(counterInteractions-1, types[counterInteractions], float(l[0]),float(l[1]),float(l[2]))
+                        #points[counterPoints].paths[counterPaths].interactions[counterInteractions-1].Print()
                         counterInteractions += 1
                         continue
+                    else:
+                        if types[counterInteractions] == 'Rx':
+                            pass
+                        else:
+                            counterInteractions += 1
+                            continue
 
-            counterPaths+=1
-            if counterPaths == points[counterPoints].nPaths:
-                counterPoints += 1
+                counterPaths+=1
+                if counterPaths == points[counterPoints].nPaths:
+                    counterPoints += 1
 
 
-H = []
-Hl = []
-k = 2*np.pi/Lambda
-rolloff = 0.1
-symbolPeriod = 1/bandwidth
-sampleF = 2*(frequency+bandwidth)
-samples = 10000
-rcosTime, rcosResponse = commpy.filters.rcosfilter(samples, rolloff, symbolPeriod, sampleF)
+    H = []
+    Hl = []
+    k = 2*np.pi/Lambda
+    rolloff = 0.1
+    symbolPeriod = 1/bandwidth
+    sampleF = 2*(frequency+bandwidth)
+    samples = 10000
+    rcosTime, rcosResponse = commpy.filters.rcosfilter(samples, rolloff, symbolPeriod, sampleF)
 
-dimensionAntennaElements = np.sqrt(Nt) #we assume that Nt=Nr and that Nx = Ny for both, tx and rx
+    dimensionAntennaElements = np.sqrt(Nt) #we assume that Nt=Nr and that Nx = Ny for both, tx and rx
 
-for p in points:
-    counter = 0
-    ########################### Steering Vectors ###################################
-    temp = 0
-    for t in p.paths:
-        txSteeringVector = [[],[]]
-        rxSteeringVector = [[],[]]
-        #t.Print()
-        for n in range(Nt[0]): 
-            omegaY = k*dy*np.sin(t.departureTheta)*np.sin(t.departurePhi)
-            txSteeringVector[0].append(np.exp(1j*n*omegaY))
-        for n in range(Nt[1]): 
-            omegaX = k*dx*np.sin(t.departureTheta)*np.cos(t.departurePhi)
-            txSteeringVector[1].append(np.exp(1j*n*omegaX))
+    for p in points:
+        counter = 0
+        ########################### Steering Vectors ###################################
+        temp = 0
+        for t in p.paths:
+            txSteeringVector = [[],[]]
+            rxSteeringVector = [[],[]]
+            #t.Print()
+            for n in range(Nt[0]): 
+                omegaY = k*dy*np.sin(t.departureTheta)*np.sin(t.departurePhi)
+                txSteeringVector[0].append(np.exp(1j*n*omegaY))
+            for n in range(Nt[1]): 
+                omegaX = k*dx*np.sin(t.departureTheta)*np.cos(t.departurePhi)
+                txSteeringVector[1].append(np.exp(1j*n*omegaX))
 
-        for n in range(Nr[0]): 
-            omegaY = k*dy*np.sin(t.arrivalTheta)*np.sin(t.arrivalPhi)
-            rxSteeringVector[0].append(np.exp(1j*n*omegaY))
-        for n in range(Nr[1]): 
-            omegaX = k*dx*np.sin(t.arrivalTheta)*np.cos(t.arrivalPhi)
-            rxSteeringVector[1].append(np.exp(1j*n*omegaX))
+            for n in range(Nr[0]): 
+                omegaY = k*dy*np.sin(t.arrivalTheta)*np.sin(t.arrivalPhi)
+                rxSteeringVector[0].append(np.exp(1j*n*omegaY))
+            for n in range(Nr[1]): 
+                omegaX = k*dx*np.sin(t.arrivalTheta)*np.cos(t.arrivalPhi)
+                rxSteeringVector[1].append(np.exp(1j*n*omegaX))
 
-        #Finishes the calculum of the steering vectors multplying by the antenna factor (scalar)
-        #and does the kronecker product between theta and phi components
-        txSteeringVector = (1/np.sqrt(Nt[0]*Nt[1]))*np.kron(txSteeringVector[0],txSteeringVector[1])
-        rxSteeringVector = (1/np.sqrt(Nr[0]*Nr[1]))*np.kron(rxSteeringVector[0],rxSteeringVector[1])
+            #Finishes the calculum of the steering vectors multplying by the antenna factor (scalar)
+            #and does the kronecker product between theta and phi components
+            txSteeringVector = (1/np.sqrt(Nt[0]*Nt[1]))*np.kron(txSteeringVector[0],txSteeringVector[1])
+            rxSteeringVector = (1/np.sqrt(Nr[0]*Nr[1]))*np.kron(rxSteeringVector[0],rxSteeringVector[1])
 
-        #Multiplies the steering vectors among themselves, but the tx steering vectors suffers an
-        #hermitian transformation or the conjugate transpose
-        Hl.append(np.sqrt(Nt[0]*Nt[1]*Nr[0]*Nr[1])*t.receivedPower*np.dot(rxSteeringVector, txSteeringVector.conj().T))
-        
-        # result: array with the results with time near the nT - tl
-        # choice: one of elements in result is choosen randomly
-        # gfilter: impulse response function of raised cosine filter in the time chosen by choice and result
-        result = np.where(np.isclose(rcosTime, counter*symbolPeriod - t.timeOfArrival))
-        choice = np.random.choice(result[0])
-        gfilter = rcosResponse[choice]
-        # As the gain is not available in a complex form, only real, the phase is randomly picked
-        randomTheta = np.radians(np.random.uniform(0,360))
-        complexGain = t.receivedPower*(np.cos(randomTheta) + 1j*np.sin(randomTheta))
-        temp += gfilter*t.receivedPower*np.dot(rxSteeringVector, txSteeringVector.conj().T) 
+            #Multiplies the steering vectors among themselves, but the tx steering vectors suffers an
+            #hermitian transformation or the conjugate transpose
+            Hl.append(np.sqrt(Nt[0]*Nt[1]*Nr[0]*Nr[1])*t.receivedPower*np.dot(rxSteeringVector, txSteeringVector.conj().T))
+            
+            # result: array with the results with time near the nT - tl
+            # choice: one of elements in result is choosen randomly
+            # gfilter: impulse response function of raised cosine filter in the time chosen by choice and result
+            result = np.where(np.isclose(rcosTime, counter*symbolPeriod - t.timeOfArrival))
+            if len(result) > 1:
+                choice = np.random.choice(result[0])
+                gfilter = rcosResponse[choice]
+            else:
+                gfilter = raisedCosine(counter*symbolPeriod - t.timeOfArrival, symbolPeriod, sampleF, rolloff) #rcosResponse[choice]
+            # As the gain is not available in a complex form, only real, the phase is randomly picked
+            randomTheta = np.radians(np.random.uniform(0,360))
+            complexGain = t.receivedPower*(np.cos(randomTheta) + 1j*np.sin(randomTheta))
+            temp += gfilter*complexGain*np.dot(rxSteeringVector, txSteeringVector.conj().T) 
 
-    H.append(temp)
-    counter += 1
-    #print(H[-1])
+        H.append(temp)
+        counter += 1
+        #print(H[-1])
 
-#Two different codebooks with tx and rx each
-codebooks = [[[],[]],[[],[]]]
-bestCodewords = [[[],[]],[[],[]]]
-p = [[],[]]
-for method in range(2):
-#CODEBOOKS + CHANNEL
-    if method == 0:
-        codebooks[method][0] = upaCodebookCreator(frequency, Nt[0], Nt[1], d)
-        codebooks[method][1] = upaCodebookCreator(frequency, Nr[0], Nr[1], d)
-    elif method == 1:
-        codebooks[method][0] = upaCodebookFullyRandom(frequency, Nt[0], Nt[1], d)
-        codebooks[method][1] = upaCodebookFullyRandom(frequency, Nr[0], Nr[1], d)
+    #Two different codebooks with tx and rx each
+    codebooks = [[[],[]],[[],[]]]
+    bestCodewords = [[[],[]],[[],[]]]
+    p = [[],[]]
+    for method in range(2):
+    #CODEBOOKS + CHANNEL
+        if method == 0:
+            codebooks[method][0] = upaCodebookCreator(frequency, Nt[0], Nt[1], d)
+            codebooks[method][1] = upaCodebookCreator(frequency, Nr[0], Nr[1], d)
+        elif method == 1:
+            codebooks[method][0] = upaCodebookFullyRandom(frequency, Nt[0], Nt[1], d)
+            codebooks[method][1] = upaCodebookFullyRandom(frequency, Nr[0], Nr[1], d)
 
-    for h in H:
-        powers = []
-        for w in codebooks[method][0][0]:
-            for f in codebooks[method][1][0]:
-                wct = h*np.conjugate(w)
-                powers.append(np.dot(wct, f))
-        maxGain = np.max(powers)
-        p[method].append(maxGain)
-        maxPair = np.argmax(powers)
-        maxTxCodebook = int(maxPair/len(codebooks[method][1][0]))
-        maxRxCodebook = maxPair % len(codebooks[method][1][0])
-        bestCodewords[method][0].append(maxTxCodebook)
-        bestCodewords[method][1].append(maxRxCodebook)
+        for h in H:
+            powers = []
+            for w in codebooks[method][0][0]:
+                for f in codebooks[method][1][0]:
+                    wct = h*np.conjugate(w)
+                    powers.append(np.dot(wct, f))
+            maxGain = np.max(powers)
+            p[method].append(maxGain)
+            maxPair = np.argmax(powers)
+            maxTxCodebook = int(maxPair/len(codebooks[method][1][0]))
+            maxRxCodebook = maxPair % len(codebooks[method][1][0])
+            bestCodewords[method][0].append(maxTxCodebook)
+            bestCodewords[method][1].append(maxRxCodebook)
 
-print(bestCodewords)            
-angles = np.angle(p)
-gains = np.real(p/np.cos(angles)) 
-print(gains)
+    angles = np.angle(p)
+    gains = np.real(p/np.cos(angles)) 
+    if len(gains[0]) == 10:
+        finalAK.append(gains[0])
+        finalRand.append(gains[1])
+        theorical.append(H) 
+
+#theorical = np.multiply(np.sqrt(Nt[0]*Nt[1]*Nr[0]*Nr[1]),np.absolute(theorical))
+theorical = np.absolute(theorical)
+#print(len(finalAK), len(np.mean(finalAK, axis=0)))
+plt.plot(np.mean(finalAK,axis=0), label='AK')
+plt.plot(np.mean(finalRand,axis=0), label='Random')
+plt.plot(np.mean(theorical,axis=0), label='Channel')
+plt.legend()
+plt.show()
