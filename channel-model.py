@@ -69,6 +69,9 @@ def raisedCosine(t, period, samplerate, rolloff):
 Nr = [4,4] #4X4 antenna array
 Nt = [4,4]
 
+totalTxAntennaElements = Nt[0]*Nt[1]
+totalRxAntennaElements = Nr[0]*Nr[1]
+
 d = 0.5 #distance between antenna elements in function of lambda
 frequency = 60e6 #Operating frequency
 bandwidth = 1760e6
@@ -79,12 +82,31 @@ dx = Lambda*d #explicit distance between antenna elements in x
 dy = Lambda*d
 
 repos = '../pc128/example_working/restuls/run'
-nRuns = 2378
+nRuns = 100 #2378
+nTrainning = 0.8*nRuns
 finalAK = []
 finalRand = []
 theorical = []
+
+codebooks = [[[],[]],[[],[]]]
+pMatrix = [[],[]]
+channel = []
+print('Creating AK Codebooks')
+codebooks[0][0] = upaCodebookCreator(frequency, Nt[0], Nt[1], d)
+codebooks[0][1] = upaCodebookCreator(frequency, Nr[0], Nr[1], d)
+print('Creating Random Codebooks')
+nPreCodebook = 100
+codebooks[1][0] = upaCodebookFullyRandom(frequency, Nt[0], Nt[1], d, nPreCodebook)
+codebooks[1][1] = upaCodebookFullyRandom(frequency, Nr[0], Nr[1], d, nPreCodebook)
+nCodewords = 52
+
+txBeamScore = [0 for i in range(nPreCodebook)]
+rxBeamScore = [0 for i in range(nPreCodebook)]
+
+dummy = [1 for i in range(totalTxAntennaElements)]
+print('Load Data and Trainning')
+
 for run in range(nRuns):
-    print(run)
     ########################### Load Raw Data ######################################
     filename = "model.paths.t001_01.r002.p2m"
     f = open(repos+'{:05d}'.format(run)+'/study/'+filename)
@@ -152,9 +174,7 @@ for run in range(nRuns):
                 if counterPaths == points[counterPoints].nPaths:
                     counterPoints += 1
 
-
     H = []
-    Hl = []
     k = 2*np.pi/Lambda
     rolloff = 0.1
     symbolPeriod = 1/bandwidth
@@ -162,96 +182,144 @@ for run in range(nRuns):
     samples = 10000
     rcosTime, rcosResponse = commpy.filters.rcosfilter(samples, rolloff, symbolPeriod, sampleF)
 
-    dimensionAntennaElements = np.sqrt(Nt) #we assume that Nt=Nr and that Nx = Ny for both, tx and rx
-
+    
     for p in points:
         counter = 0
-        ########################### Steering Vectors ###################################
-        temp = 0
-        for t in p.paths:
-            txSteeringVector = [[],[]]
-            rxSteeringVector = [[],[]]
-            #t.Print()
-            for n in range(Nt[0]): 
-                omegaY = k*dy*np.sin(t.departureTheta)*np.sin(t.departurePhi)
-                txSteeringVector[0].append(np.exp(1j*n*omegaY))
-            for n in range(Nt[1]): 
-                omegaX = k*dx*np.sin(t.departureTheta)*np.cos(t.departurePhi)
-                txSteeringVector[1].append(np.exp(1j*n*omegaX))
+        Hmn = []
+        Hrc = []
+        for m in range(totalTxAntennaElements):
+            Hmn.append([])
+            Hrc.append([])
+            for n in range(totalRxAntennaElements):
+                summ = 0
+                summRC = 0
+                for t in p.paths:
+                    txSteeringVector = [[],[]]
+                    rxSteeringVector = [[],[]]
+                    #t.Print()
+                    ########################### Steering Vectors ###################################
+                    for q in range(Nt[0]): 
+                        omegaY = k*dy*np.sin(t.departureTheta)*np.sin(t.departurePhi)
+                        txSteeringVector[0].append(np.exp(1j*q*omegaY))
+                    for q in range(Nt[1]): 
+                        omegaX = k*dx*np.sin(t.departureTheta)*np.cos(t.departurePhi)
+                        txSteeringVector[1].append(np.exp(1j*q*omegaX))
 
-            for n in range(Nr[0]): 
-                omegaY = k*dy*np.sin(t.arrivalTheta)*np.sin(t.arrivalPhi)
-                rxSteeringVector[0].append(np.exp(1j*n*omegaY))
-            for n in range(Nr[1]): 
-                omegaX = k*dx*np.sin(t.arrivalTheta)*np.cos(t.arrivalPhi)
-                rxSteeringVector[1].append(np.exp(1j*n*omegaX))
+                    for q in range(Nr[0]): 
+                        omegaY = k*dy*np.sin(t.arrivalTheta)*np.sin(t.arrivalPhi)
+                        rxSteeringVector[0].append(np.exp(1j*q*omegaY))
+                    for q in range(Nr[1]): 
+                        omegaX = k*dx*np.sin(t.arrivalTheta)*np.cos(t.arrivalPhi)
+                        rxSteeringVector[1].append(np.exp(1j*q*omegaX))
 
-            #Finishes the calculum of the steering vectors multplying by the antenna factor (scalar)
-            #and does the kronecker product between theta and phi components
-            txSteeringVector = (1/np.sqrt(Nt[0]*Nt[1]))*np.kron(txSteeringVector[0],txSteeringVector[1])
-            rxSteeringVector = (1/np.sqrt(Nr[0]*Nr[1]))*np.kron(rxSteeringVector[0],rxSteeringVector[1])
+                    #Finishes the calculum of the steering vectors multplying by the antenna factor (scalar)
+                    #and does the kronecker product between theta and phi components
+                    txSteeringVector = (1/np.sqrt(Nt[0]*Nt[1]))*np.kron(txSteeringVector[0],txSteeringVector[1])
+                    rxSteeringVector = (1/np.sqrt(Nr[0]*Nr[1]))*np.kron(rxSteeringVector[0],rxSteeringVector[1])
+                    randomTheta = np.radians(np.random.uniform(0,360))
 
-            #Multiplies the steering vectors among themselves, but the tx steering vectors suffers an
-            #hermitian transformation or the conjugate transpose
-            Hl.append(np.sqrt(Nt[0]*Nt[1]*Nr[0]*Nr[1])*t.receivedPower*np.dot(rxSteeringVector, txSteeringVector.conj().T))
-            
-            # result: array with the results with time near the nT - tl
-            # choice: one of elements in result is choosen randomly
-            # gfilter: impulse response function of raised cosine filter in the time chosen by choice and result
-            result = np.where(np.isclose(rcosTime, counter*symbolPeriod - t.timeOfArrival))
-            if len(result) > 1:
-                choice = np.random.choice(result[0])
-                gfilter = rcosResponse[choice]
-            else:
-                gfilter = raisedCosine(counter*symbolPeriod - t.timeOfArrival, symbolPeriod, sampleF, rolloff) #rcosResponse[choice]
-            # As the gain is not available in a complex form, only real, the phase is randomly picked
-            randomTheta = np.radians(np.random.uniform(0,360))
-            complexGain = t.receivedPower*(np.cos(randomTheta) + 1j*np.sin(randomTheta))
-            temp += gfilter*complexGain*np.dot(rxSteeringVector, txSteeringVector.conj().T) 
+                    # As the gain is not available in a complex form, only real, the phase is randomly picked
+                    complexGain = t.receivedPower*(np.cos(randomTheta) + 1j*np.sin(randomTheta))
 
-        H.append(temp)
-        counter += 1
-        #print(H[-1])
+                    #Multiplies the steering vectors among themselves, but the tx steering vectors suffers an
+                    #hermitian transformation or the conjugate transpose
+                    summ += np.sqrt(Nt[0]*Nt[1]*Nr[0]*Nr[1])*complexGain*np.dot(rxSteeringVector, txSteeringVector.conj().T)
+                    
+                    # result: array with the results with time near the nT - tl
+                    # choice: one of elements in result is choosen randomly
+                    # gfilter: impulse response function of raised cosine filter in the time chosen by choice and result
 
-    #Two different codebooks with tx and rx each
-    codebooks = [[[],[]],[[],[]]]
-    bestCodewords = [[[],[]],[[],[]]]
-    p = [[],[]]
-    for method in range(2):
-    #CODEBOOKS + CHANNEL
-        if method == 0:
-            codebooks[method][0] = upaCodebookCreator(frequency, Nt[0], Nt[1], d)
-            codebooks[method][1] = upaCodebookCreator(frequency, Nr[0], Nr[1], d)
-        elif method == 1:
-            codebooks[method][0] = upaCodebookFullyRandom(frequency, Nt[0], Nt[1], d)
-            codebooks[method][1] = upaCodebookFullyRandom(frequency, Nr[0], Nr[1], d)
+                    '''
+                    result = np.where(np.isclose(rcosTime, counter*symbolPeriod - t.timeOfArrival))
+                    if len(result) > 1:
+                        choice = np.random.choice(result[0])
+                        gfilter = rcosResponse[choice]
+                    else:
+                    '''
+
+                    gfilter = raisedCosine(counter*symbolPeriod - t.timeOfArrival, symbolPeriod, sampleF, rolloff) #rcosResponse[choice]
+                    counter += 1
+                        
+                    summRC += gfilter*summ
+                Hmn[-1].append(summ)
+                Hrc[-1].append(summRC)
+
+        H.append(Hmn)
+        #H.append(Hrc)
+
+
+
+    ########################### Trainning Random Codebooks ###################################
+    if run < nTrainning:
+        print('Training Random Codebooks %d' % run, end='\r')
 
         for h in H:
             powers = []
-            for w in codebooks[method][0][0]:
-                for f in codebooks[method][1][0]:
-                    wct = h*np.conjugate(w)
-                    powers.append(np.dot(wct, f))
-            maxGain = np.max(powers)
-            p[method].append(maxGain)
+            for w in codebooks[1][0][0]:
+                for f in codebooks[1][1][0]:
+                    factor1 = np.dot(w,h)
+                    powers.append(np.dot(factor1, f))
+            maxGain = np.max(np.power(np.absolute(powers),2))
             maxPair = np.argmax(powers)
-            maxTxCodebook = int(maxPair/len(codebooks[method][1][0]))
-            maxRxCodebook = maxPair % len(codebooks[method][1][0])
-            bestCodewords[method][0].append(maxTxCodebook)
-            bestCodewords[method][1].append(maxRxCodebook)
+            maxTxCodebook = int(maxPair/len(codebooks[1][1][0]))
+            maxRxCodebook = maxPair % len(codebooks[1][1][0])
 
-    angles = np.angle(p)
-    gains = np.real(p/np.cos(angles)) 
-    if len(gains[0]) == 10:
-        finalAK.append(gains[0])
-        finalRand.append(gains[1])
-        theorical.append(H) 
+            txBeamScore[maxTxCodebook] += 1
+            rxBeamScore[maxRxCodebook] += 1
 
-#theorical = np.multiply(np.sqrt(Nt[0]*Nt[1]*Nr[0]*Nr[1]),np.absolute(theorical))
-theorical = np.absolute(theorical)
-#print(len(finalAK), len(np.mean(finalAK, axis=0)))
-plt.plot(np.mean(finalAK,axis=0), label='AK')
-plt.plot(np.mean(finalRand,axis=0), label='Random')
-plt.plot(np.mean(theorical,axis=0), label='Channel')
+
+    ############################### Testing Codebooks ########################################
+    elif run >= nTrainning:
+        print('Testing Random Codebooks %d' % (run - nTrainning), end='\r')
+        if run == nTrainning:
+            txBestCodewords = np.argsort(txBeamScore)[len(txBeamScore) - nCodewords:]        
+            rxBestCodewords = np.argsort(rxBeamScore)[len(rxBeamScore) - nCodewords:]        
+
+            #randomTxCodebook = [codebooks[1][0][i] for i in txBestCodewords]
+            #randomRxCodebook = [codebooks[1][1][i] for i in rxBestCodewords]
+
+            print(len(codebooks[1]), len(codebooks[1][0]), len(codebooks[1][0][0]))
+
+            codebooks[1][0][0] = [codebooks[1][0][0][i] for i in txBestCodewords]
+            codebooks[1][1][0] = [codebooks[1][1][0][i] for i in rxBestCodewords]
+
+        bestCodewords = [[[],[]],[[],[]]]
+
+        #Two different codebooks with tx and rx each
+        channel.append([])
+        for method in range(2):
+        #CODEBOOKS + CHANNEL
+            pMatrix[method].append([])
+            for h in H:
+                powers = []
+                for w in codebooks[method][0][0]:
+                    for f in codebooks[method][1][0]:
+                        factor1 = np.dot(w,h)
+                        powers.append(np.dot(factor1, f))
+
+                maxGain = np.max(np.power(np.absolute(powers),2))
+                pMatrix[method][-1].append(maxGain)
+                maxPair = np.argmax(pMatrix[method])
+                maxTxCodebook = int(maxPair/len(codebooks[method][1][0]))
+                maxRxCodebook = maxPair % len(codebooks[method][1][0])
+                bestCodewords[method][0].append(maxTxCodebook)
+                bestCodewords[method][1].append(maxRxCodebook)
+                if method == 1:
+                    continue
+                else:
+                    M = np.dot(np.dot(dummy, h),dummy)
+                    channel[-1].append(np.power(np.absolute(M),2))
+'''
+print(pMatrix)
+for i in range(len(p[0])):
+    if len(i) == 10:
+        finalAK.append(p[0][i])
+        finalRand.append(p[1][i])
+'''
+print('Plotting')
+print(len(finalAK))
+plt.plot(np.mean(pMatrix[0],axis=0), label='AK')
+plt.plot(np.mean(pMatrix[1],axis=0), label='Random')
+plt.plot(np.mean(channel,axis=0), label='Channel')
 plt.legend()
 plt.show()
